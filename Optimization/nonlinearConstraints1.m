@@ -5,7 +5,8 @@ function [c, ceq] = nonlinearConstraints(x, params, set_trip_distance)
     R_prop_hover = x(3);
     c = x(4);
     b = x(5);
-    rho_bat = x(6);
+    % rho_bat = x(6);
+
 
     % Use the fixed parameters
     alpha_deg_cruise = params.alpha_deg_cruise;
@@ -14,6 +15,7 @@ function [c, ceq] = nonlinearConstraints(x, params, set_trip_distance)
     num_props_hover = params.num_props_hover;
     g = params.g;
     rho = params.rho;
+    rho_msl = params.rho_msl;
     rho_hover = params.rho_hover;
     rho_climb = params.rho_climb;
     h_hover = params.h_hover;
@@ -27,9 +29,11 @@ function [c, ceq] = nonlinearConstraints(x, params, set_trip_distance)
     eta_h = params.eta_h;
     eta_c = params.eta_c;
     m_crew = params.m_crew;
-    m_other = params.m_other; 
     d_tip = params.d_tip;
     w_fuselage = params.w_fuselage;
+    l_fus_m = params.l_fus_m;
+    r_fus_m = params.r_fus_m;
+    rho_bat = params.rho_bat;
 
 
     % --> Disciplinary Analysis:
@@ -64,30 +68,31 @@ function [c, ceq] = nonlinearConstraints(x, params, set_trip_distance)
     e_res = E_res(Power_cruise, t_res);
 
     % Mass processing
+    m_furnish = M_furnish(MTOM, V_cruise, rho);
+    m_gear = M_gear(MTOM, R_prop_cruise, r_fus_m);
+    m_fuselage = M_fuselage(l_fus_m, r_fus_m, MTOM, rho, rho_msl, V_cruise);
+    m_system = M_system(l_fus_m, b, MTOM);
     m_bat = M_bat(rho_bat, e_trip, e_res);
-    m_motor = M_motor(Power_hover, Power_climb);
-    m_wing = M_wing(c, b);
+    m_motor = M_motor(R_prop_hover, Power_hover, R_prop_cruise, Power_climb);
+    m_wing = M_wing(c, b, V_cruise, rho, MTOM);
     m_pay = M_pay (N_s, M_pax, M_lug);
     m_rotor = M_rotor(num_props_hover, num_props_cruise, R_prop_hover, R_prop_cruise);
-    m_empty = m_wing + m_motor + m_rotor + m_crew + m_other;
+    m_empty = m_wing + m_motor + m_rotor + m_crew + m_furnish + m_fuselage + m_system + m_gear;
 
 
     % -> Constraint Definition:
 
-    % not in use: lift_cruise_constraint = Lift(rho, 0.95*V_cruise, c_l_cruise, c, b) - 1 * MTOM * g; % equlibrium constraint horizontal flight
-    % not in use: lift_climb_constraint = Lift(rho_climb, 0.95*V_climb, c_l_climb, c, b) - 1 * MTOM * g * cos(atan(roc/V_climb)); % equilibrium constraint climb flight 
+ 
     geometry_constraint = 2 * (num_props_hover / 4 * 2 * R_prop_hover * 3/4 + 2 * d_tip + w_fuselage / 2) - b; % constraint on lifting rotor and fuselage distance
-    vertiport_constraint1 = 2 * (2 * d_tip + 4 * R_prop_hover + w_fuselage / 2) - 18 * 1.1; % 18 m vertiport constraint (according to EASA PTS VTP) with 10% margin
-    vertiport_constraint2 = b - 18 * 1.1; %18 m vertiport constraint (according to EASA PTS VTP) with 10% margin
-    % not in use: MTOM_constraint1 = MTOM - 5700; % SC-VTOL EASA max. certifying take-off mass (kg)
-    % not in use: cruise_constraint = sqrt( MTOM * g * 2 / (rho * c_l_cruise * c * b)) -  1.05 * V_cruise; % below 1.3 factor, the computation consumes long time and the results are unrealsitic
-    % not in use: climb_constraint = sqrt(cosd(alpha_deg_climb) * MTOM * g *2 /(rho_climb*c_l_climb*c*b)) -  1.05 * V_climb;
-    MTOM_constraint2 = m_empty + m_bat + m_pay - 1.04*MTOM;
+    vertiport_constraint1 = 2 * (2 * d_tip + 4 * R_prop_hover + w_fuselage / 2) - 15; % 15 m vertiport constraint (according to EASA PTS VTP) with 10% margin
+    vertiport_constraint2 = b - 15; %15 m vertiport constraint (according to EASA PTS VTP) with 10% margin
+    tolerance_percentage = 0.025; % 11% Tolerance
+    tolerance_value = tolerance_percentage * MTOM;
+    MTOM_constraint2 = abs(MTOM - (m_bat + m_empty + m_pay)) - tolerance_value;
+    wing = b/c - 15;
 
     ceq = [];
-    c = [
+    c = [ % insert scenario constraints here 
          geometry_constraint;
-         vertiport_constraint1;
-         vertiport_constraint2;
          MTOM_constraint2];
 end
