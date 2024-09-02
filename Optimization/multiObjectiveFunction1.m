@@ -5,25 +5,45 @@ function f = multiObjectiveFunction(x, params, set_trip_distance)
     R_prop_hover = x(3);
     c = x(4);
     b = x(5);
-    rho_bat = x(6);
+    % rho_bat = x(6);
+
 
 
     % Using the fixed parameters
-    alpha_deg_cruise = params.alpha_deg_cruise; 
-    alpha_deg_climb = params.alpha_deg_climb;
-    num_props_cruise = params.num_props_cruise;
-    num_props_hover = params.num_props_hover;
-    g = params.g;
-    rho_hover = params.rho_hover;
-    rho = params.rho;
-    rho_climb = params.rho_climb;
-    h_hover = params.h_hover;
-    h_cruise = params.h_cruise;
-    t_hover = params.t_hover;
-    D_trip = set_trip_distance;
-    eta_h = params.eta_h;
-    eta_c = params.eta_c;
-    
+        alpha_deg_cruise = params.alpha_deg_cruise;
+        alpha_deg_climb = params.alpha_deg_climb;
+        num_props_cruise = params.num_props_cruise;
+        num_props_hover = params.num_props_hover;
+        g = params.g;
+        rho_hover = params.rho_hover;
+        rho = params.rho;
+        rho_msl = params.rho_msl;
+        rho_climb = params.rho_climb;
+        h_hover = params.h_hover;
+        h_cruise = params.h_cruise;
+        N_s = params.N_s;
+        M_pax = params.M_pax;
+        M_lug = params.M_lug;
+        P_s_empty = params.P_s_empty;
+        N_wd = params.N_wd;
+        T_D = params.T_D;
+        N_df = params.N_df;
+        P_e = params.P_e;
+        P_bat_s = params.P_bat_s;
+        t_res = params.t_res;
+        t_hover = params.t_hover;
+        D_trip = set_trip_distance;
+        eta_h = params.eta_h;
+        eta_c = params.eta_c;
+        m_crew = params.m_crew;
+        time_weight = params.time_weight;
+        co2_weight = params.co2_weight;
+        energy_weight = params.energy_weight;
+        costs_weight = params.costs_weight;
+        l_fus_m = params.l_fus_m;
+        r_fus_m = params.r_fus_m;
+        rho_bat = params.rho_bat;
+
     
     % Aerodynamic & Performance Processing 
     c_l_cruise = Lift_Coefficient(alpha_deg_cruise, c, b);
