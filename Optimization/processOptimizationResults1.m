@@ -6,7 +6,7 @@ function results = processOptimizationResults(x, fval, params, set_trip_distance
         R_prop_hover = x(i, 3);
         c = x(i, 4);
         b = x(i, 5);
-        rho_bat = x(i, 6);
+        % rho_bat = x(i, 6);
 
         % Use the fixed parameters
         alpha_deg_cruise = params.alpha_deg_cruise;
@@ -16,6 +16,7 @@ function results = processOptimizationResults(x, fval, params, set_trip_distance
         g = params.g;
         rho_hover = params.rho_hover;
         rho = params.rho;
+        rho_msl = params.rho_msl;
         rho_climb = params.rho_climb;
         h_hover = params.h_hover;
         h_cruise = params.h_cruise;
@@ -24,6 +25,7 @@ function results = processOptimizationResults(x, fval, params, set_trip_distance
         M_lug = params.M_lug;
         P_s_empty = params.P_s_empty;
         N_wd = params.N_wd;
+        T_D = params.T_D;
         N_df = params.N_df;
         P_e = params.P_e;
         P_bat_s = params.P_bat_s;
@@ -33,13 +35,22 @@ function results = processOptimizationResults(x, fval, params, set_trip_distance
         eta_h = params.eta_h;
         eta_c = params.eta_c;
         m_crew = params.m_crew;
-        m_other = params.m_other;
         time_weight = params.time_weight;
         co2_weight = params.co2_weight;
         energy_weight = params.energy_weight;
         costs_weight = params.costs_weight;
-
-      
+        l_fus_m = params.l_fus_m;
+        r_fus_m = params.r_fus_m;
+        rho_bat = params.rho_bat;
+        C_charge = params.C_charge;
+        U_pilot = params.U_pilot;
+        N_AC = params.N_AC;
+        T_D = params.T_D; 
+        S_P = params.S_P;
+        GWP_battery = params.GWP_battery;
+        GWP_energy = params.GWP_energy;
+        LF = params.LF;
+        fare_km = params.fare_km;
 
         % Disciplinary Analysis
     
@@ -52,6 +63,12 @@ function results = processOptimizationResults(x, fval, params, set_trip_distance
         V_climb = sqrt(2*MTOM*g/(c_l_climb*c*b*rho));
         drag_cruise = Drag(rho, V_cruise, c, b, c_d_cruise);
         roc = ROC(alpha_deg_climb, V_climb); 
+
+        AR = b / c; % aspect ratio 
+        WL = MTOM / (b * c); % wing loading in kg / m^2
+        DL = MTOM / (num_props_hover * pi()*R_prop_hover^2); % disk loading in kg/m^2
+        LDcruise = c_l_cruise / c_d_cruise; % LD ratio in cruise 
+        LDclimb = c_l_climb / c_d_climb; % LD ratio in climb 
 
         % Power Processing (via Momentum Theory)
         Power_hover = Power_Hover_MT(MTOM, rho_hover, R_prop_hover, num_props_hover, eta_h);
@@ -70,43 +87,106 @@ function results = processOptimizationResults(x, fval, params, set_trip_distance
         e_cl = E_climb(Power_climb, t_cl);
         e_cru = E_cruise(Power_cruise, t_cr);
         e_trip = E_trip(e_hvr, e_cl, e_cru, 0);
-        e_res = E_res(Power_cruise, t_res);
+        e_res = E_res(Power_cruise, t_res);        
+
 
         % Mass processing
+        m_furnish = M_furnish(MTOM, V_cruise, rho);
+        m_gear = M_gear(MTOM, R_prop_cruise, r_fus_m);
+        m_fuselage = M_fuselage(l_fus_m, r_fus_m, MTOM, rho, rho_msl, V_cruise);
+        m_system = M_system(l_fus_m, b, MTOM);
         m_bat = M_bat(rho_bat, e_trip, e_res);
-        m_motor = M_motor(Power_hover, Power_climb);
-        m_wing = M_wing(c, b);
+        m_motor = M_motor(R_prop_hover, Power_hover, R_prop_cruise, Power_climb);
+        m_wing = M_wing(c, b, V_cruise, rho, MTOM);
         m_pay = M_pay (N_s, M_pax, M_lug);
         m_rotor = M_rotor(num_props_hover, num_props_cruise, R_prop_hover, R_prop_cruise);
-        m_empty = m_wing + m_motor + m_rotor + m_crew + m_other;
+        m_empty = m_wing + m_motor + m_rotor + m_crew + m_furnish + m_fuselage + m_system + m_gear;
         omega_empty = m_empty / MTOM;
+
+        e_tot = E_tot(rho_bat, m_bat); % total battery energy 
+        e_tripm = E_trip_max(rho_bat, m_bat, e_res); % max trip energy
+
+
+        % Battery and Operations Design Module
+
+        E_battery = rho_bat * m_bat; % total energy capcity of the battery in Wh
+        C_rate_hover = Power_hover / E_battery;
+        C_rate_climb = Power_climb / E_battery;
+        C_rate_cruise = Power_cruise / E_battery;
+        C_rate_average = (C_rate_hover * t_hover + C_rate_climb * t_cl + C_rate_cruise * t_cr) / t_tot; % c-rate discharge 
+        DOD = e_trip / E_battery; % depth of discharge 
+     
+        T_T = 1 / C_charge * DOD * 3600;  % [seconds] turnaround time 
+        DH = T_T / t_tot + 1; % deadhead ratio 
+
+        n_cycles = N_cycles(DOD, C_rate_average, C_charge); % battery usage cycles, before replacement (degradation to 80% BOL)
+        n_bat_req = 1/n_cycles * N_wd * T_D / (t_tot*DH) * e_trip / e_tripm; % number of batteries required to fullfill number of flight ; 416.67
+        
+        FC_d = T_D / (t_tot * DH); % daly flight cycles 
+        FC_a = N_wd * FC_d; % flight cycles flown per year
+        FH_d = FC_d * t_tot / 3600; % daily flight hours 
+        FH_a = FC_a * t_tot / 3600; % annual flight hours 
+        P_bat_single = P_bat_s * e_tot/1000; % single battery price 
+        P_bat_annual = n_bat_req * P_bat_single; % yearly battery price        
+        
 
 
         % --> Cost processing 
 
         % Cash Operating Costs
         c_e = C_E(e_trip, P_e);
-        c_n = C_N(D_trip);
-        c_cob = C_Cob(t_tot);
+        c_n = C_N(MTOM ,D_trip);
+        c_cob = C_Cob(N_wd, T_D, U_pilot, N_AC, t_tot, DH, S_P);
         c_mwr = C_Mwr(t_tot);
         %supplementary energy processing
-        e_tot = E_tot(rho_bat, m_bat); % total battery energy 
-        e_tripm = E_trip_max(rho_bat, m_bat, e_res); % max trip energy
-        c_mb = C_MB(P_bat_s, e_trip, e_tot, e_tripm);
+
+        c_mb = C_MB(P_bat_s, e_tot, n_bat_req, t_tot, DH, T_D, N_wd);
         c_m = C_M(c_mwr, c_mb);
         coc = COC(c_e, c_m, c_n, c_cob);
-
+           
         % Cost of Wwnership & Indirect Operating Costs 
-        coo = COO(coc, omega_empty, MTOM, P_s_empty, N_wd, N_df);
-        ioc = IOC(coc, omega_empty, MTOM, P_s_empty, N_wd, N_df);
+        coo = COO(coc, omega_empty, MTOM, P_s_empty, N_wd, T_D, t_tot, DH);
+        ioc = IOC(coc, omega_empty, MTOM, P_s_empty, N_wd, T_D, t_tot, DH);
 
         % Total Operating Costs
         toc = TOC(coc, coo, ioc);
         toc_s = TOC_s(toc, N_s, D_trip);
 
 
+        % Economics & Environment
+
+        GWP_flight = GWP_cycle(E_battery, n_bat_req, FC_a, e_trip, GWP_battery, GWP_energy);
+        GWP_annual = GWP_flight * FC_a;
+        GWP_energy_fraction = (e_trip/1000 * GWP_energy) / GWP_flight;  
         
-        % -> Trnapsortation Mode Comparison processing
+
+
+        revenue = fare_km * D_trip * N_s * LF; % estimated revenue per trip in €
+        ticket_price_pax = revenue / (N_s*LF); % estimated ticket price in €
+        Profit_flight = (revenue-toc); % profit per flight in €
+        Profit_annual = (revenue-toc) * FC_a; % annual profit in €
+    
+    
+        %%% Efficiency Metrices
+        DOC = coc + coo; % € - direct operating cost per flight 
+        
+        ECE = DOC / (e_trip/1000); % €/kWh - Energy Cost Efficiency
+        BCE = c_mb / (e_trip/1000); % €/kWh - Battery Cost Efficienty 
+        RpK = revenue / D_trip; % revenue per km ratio
+        PR = Profit_flight / toc; % profit ratio 
+        
+        EpK = e_trip/1000 / D_trip; % kWh/km
+        GWPpK = GWP_flight / D_trip; % kg CO2e / km 
+        CEE = GWP_flight / (e_trip/1000); % Carbon Efficiency of Energy (CEE)
+   
+        AC_cost = m_empty * P_s_empty; % aircraft acquisition cost €
+
+        CSI = DOC * GWP_flight / D_trip; % Combined Sustainability Index
+        
+        COI = (toc * GWP_flight) / (D_trip * Profit_annual/1000); % combined operation index
+
+
+        % -> Transportation Mode Comparison processing
 
         % Calculate eVTOL specific parameters
         time_requirement = t_tot/60; % trip time in min 
@@ -236,6 +316,6 @@ function results = processOptimizationResults(x, fval, params, set_trip_distance
         eVTOL_FoM = FoM(end);
 
         % Append the results
-        results = [results; fval(i, :), x(i, :), V_cruise, V_climb, Power_hover, Power_climb, Power_cruise, m_empty, m_pay, m_bat, m_motor, m_rotor, m_wing, c_l_cruise, c_l_climb, toc_s, toc, coc, c_e, c_m, c_mwr, c_mb, c_n, c_cob, coo, ioc, d_cru, d_cl, eVTOL_FoM];
+        results = [results; fval(i, :), x(i, :), rho_bat, V_cruise, V_climb, Power_hover, Power_climb, Power_cruise, E_battery/1000, EpK, m_empty, m_pay, m_bat, m_motor, m_rotor, m_wing, m_gear, m_furnish, m_fuselage, m_system, c_l_cruise, c_l_climb, c_d_cruise, c_d_climb, LDcruise, LDclimb, roc*196.85, AR, WL, DL, toc_s, toc, DOC, coc, c_e, c_m, c_mwr, c_mb, c_n, c_cob, coo, ioc, AC_cost, ECE, BCE, n_bat_req, n_cycles, DOD, C_rate_hover, C_rate_climb, C_rate_cruise, C_rate_average, C_charge, T_T, DH, P_bat_single, P_bat_annual, GWP_flight, GWP_annual, GWPpK, CEE, GWP_energy_fraction, CSI, COI, FC_a, FC_d, FH_a, FH_d, Profit_annual, Profit_flight, PR, RpK, ticket_price_pax, d_cru, d_cl, eVTOL_FoM];
     end
 end
