@@ -11,6 +11,7 @@ This repository hosts the MATLAB code for the eVTOL Technical-Economical Operati
 - **Power and Energy Modeling**: Assesses energy requirements across different flight phases, incorporating battery degradation models.
 - **Operational Cost Analysis**: Breaks down costs into cash operating costs, cost of ownership, and indirect operating costs, providing a detailed financial analysis.
 - **Multi-Objective Optimization**: Implements a robust MATLAB-based optimization code to balance multiple design and operational objectives.
+- **eVTOL Industry Comparison**: A tabular comparison of common EVTOL industrial projects, available as excel sheet, in terms of technological design parameters and operational characteristics (as of August 2024). 
 
 ## Usage
 
